@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"strconv"
 	"strings"
 	"time"
 
@@ -345,7 +346,19 @@ SELECT
   cloned,
   fork,
   private,
-  sources,
+  (
+	SELECT
+	  json_agg(
+	    json_build_object(
+          'CloneURL', clone_url,
+          'ID', external_service_id,
+          'Kind', LOWER(svcs.kind)
+	    )
+	  )
+	FROM external_service_repos AS sr
+	JOIN external_services AS svcs ON sr.external_service_id = svcs.id
+	WHERE repo_id = repo.id
+  ),
   metadata
 FROM repo
 WHERE id > %s
@@ -708,6 +721,37 @@ WITH batch AS (
 )`
 
 var updateReposQuery = batchReposQueryFmtstr + `
+, sources AS (
+	SELECT * FROM ROWS FROM (
+	    json_to_recordset(batch.sources)
+        AS (
+            id        bigint,
+            clone_url text,
+            repo_id   integer
+        )
+    )
+    WITH ORDINALITY
+),
+update_sources AS (
+  UPDATE
+	external_service_repos AS esr
+  SET
+	clone_url = srcs.clone_url
+  FROM sources AS srcs
+  WHERE
+    esr.external_service_id = srcs.id
+    AND esr.repo_id = srcs.repo_id
+    AND esr.clone_url != srcs.clone_url
+),
+delete_sources AS (
+  DELETE FROM
+	external_service_repos AS esr
+  WHERE
+    esr.external_service_id NOT IN (SELECT id FROM sources)
+    AND
+    esr.repo_id NOT IN (SELECT id FROM sources)
+),
+SELECT * FROM sources;
 UPDATE repo
 SET
   name                  = batch.name,
@@ -760,7 +804,6 @@ INSERT INTO repo (
   archived,
   fork,
   private,
-  sources,
   metadata
 )
 SELECT
@@ -777,7 +820,6 @@ SELECT
   archived,
   fork,
   private,
-  sources,
   metadata
 FROM batch
 ON CONFLICT (external_service_type, external_service_id, external_id) DO NOTHING
@@ -872,7 +914,8 @@ func scanExternalService(svc *ExternalService, s scanner) error {
 }
 
 func scanRepo(r *Repo, s scanner) error {
-	var sources, metadata json.RawMessage
+	var sources json.RawMessage
+	var metadata json.RawMessage
 	err := s.Scan(
 		&r.ID,
 		&r.Name,
@@ -896,8 +939,23 @@ func scanRepo(r *Repo, s scanner) error {
 		return err
 	}
 
-	if err = json.Unmarshal(sources, &r.Sources); err != nil {
+	type sourceInfo struct {
+		ID       int64
+		CloneURL string
+		Kind     string
+	}
+	var srcs []sourceInfo
+
+	if err = json.Unmarshal(sources, &srcs); err != nil {
 		return errors.Wrap(err, "scanRepo: failed to unmarshal sources")
+	}
+
+	r.Sources = make(map[string]*SourceInfo)
+	for _, src := range srcs {
+		r.Sources[extsvc.URN(src.Kind, src.ID)] = &SourceInfo{
+			ID:       strconv.FormatInt(src.ID, 10),
+			CloneURL: src.CloneURL,
+		}
 	}
 
 	typ, ok := extsvc.ParseServiceType(r.ExternalRepo.ServiceType)
