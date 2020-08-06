@@ -116,7 +116,7 @@ func TestChangesetResolver(t *testing.T) {
 			},
 			Labels: struct{ Nodes []github.Label }{
 				Nodes: []github.Label{
-					{ID: "label-no-description", Name: "Bug", Color: "121212"},
+					{ID: "label-no-description", Name: "no-description", Color: "121212"},
 				},
 			},
 			CreatedAt: now,
@@ -170,7 +170,7 @@ func TestChangesetResolver(t *testing.T) {
 					TotalCount: 2,
 				},
 				Labels: []apitest.Label{
-					{Text: "Bug", Color: "121212", Description: nil},
+					{Text: "no-description", Color: "121212", Description: nil},
 					{Text: "cool-label", Color: "blue", Description: &labelEventDescriptionText},
 				},
 				Head: apitest.GitRef{
