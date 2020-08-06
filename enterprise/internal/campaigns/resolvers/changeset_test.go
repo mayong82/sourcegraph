@@ -70,6 +70,8 @@ func TestChangesetResolver(t *testing.T) {
 		createdByCampaign:   false,
 	})
 
+	labelEventDescriptionText := "the best label in town"
+
 	syncedGitHubChangeset := createChangeset(t, ctx, store, testChangesetOpts{
 		repo: repo.ID,
 		// We don't need a spec, because the resolver should take all the data
@@ -105,11 +107,17 @@ func TestChangesetResolver(t *testing.T) {
 				{Type: "LabeledEvent", Item: &github.LabelEvent{
 					CreatedAt: now.Add(5 * time.Second),
 					Label: github.Label{
+						ID:          "label-event",
 						Name:        "cool-label",
 						Color:       "blue",
-						Description: "the best label in town",
+						Description: labelEventDescriptionText,
 					},
 				}},
+			},
+			Labels: struct{ Nodes []github.Label }{
+				Nodes: []github.Label{
+					{ID: "label-no-description", Name: "Bug", Color: "121212"},
+				},
 			},
 			CreatedAt: now,
 			UpdatedAt: now,
@@ -162,7 +170,8 @@ func TestChangesetResolver(t *testing.T) {
 					TotalCount: 2,
 				},
 				Labels: []apitest.Label{
-					{Text: "cool-label", Color: "blue", Description: "the best label in town"},
+					{Text: "Bug", Color: "121212", Description: nil},
+					{Text: "cool-label", Color: "blue", Description: &labelEventDescriptionText},
 				},
 				Head: apitest.GitRef{
 					Name:        "refs/heads/open-pr",
