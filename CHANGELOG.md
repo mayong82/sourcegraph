@@ -17,6 +17,8 @@ All notable changes to Sourcegraph are documented in this file.
 - Saved search emails now include a link to the user's saved searches page. [#11651](https://github.com/sourcegraph/sourcegraph/pull/11651)
 - Campaigns can now be synced using GitLab webhooks. [#12139](https://github.com/sourcegraph/sourcegraph/pull/12139)
 - Configured `observability.alerts` can now be tested using a GraphQL endpoint, `triggerObservabilityTestAlert`. [#12532](https://github.com/sourcegraph/sourcegraph/pull/12532)
+- `content:` filters can now be negated (`-content:`) for literal and regular expression patterns on indexed repositories.
+- `NOT`, a new query operator, is now available as an alternative to `-` on supported keywords. 
 
 ### Changed
 
