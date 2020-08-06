@@ -267,21 +267,64 @@ func TestService(t *testing.T) {
 	})
 
 	t.Run("CloseCampaign", func(t *testing.T) {
-		campaign := testCampaign(admin.ID)
-
 		svc := NewServiceWithClock(store, cf, clock)
 
-		if err = svc.CreateCampaign(ctx, campaign); err != nil {
-			t.Fatal(err)
+		createCampaign := func(t *testing.T) *campaigns.Campaign {
+			t.Helper()
+			campaign := testCampaign(admin.ID)
+			if err = svc.CreateCampaign(ctx, campaign); err != nil {
+				t.Fatal(err)
+			}
+			return campaign
 		}
 
-		campaign, err = svc.CloseCampaign(ctx, campaign.ID, true)
-		if err != nil {
-			t.Fatalf("campaign not closed: %s", err)
+		closeConfirm := func(t *testing.T, c *campaigns.Campaign, closeChangesets bool) {
+			t.Helper()
+
+			closedCampaign, err := svc.CloseCampaign(ctx, c.ID, closeChangesets)
+			if err != nil {
+				t.Fatalf("campaign not closed: %s", err)
+			}
+			if closedCampaign.ClosedAt.IsZero() {
+				t.Fatalf("campaign ClosedAt is zero")
+			}
 		}
-		if campaign.ClosedAt.IsZero() {
-			t.Fatalf("campaign ClosedAt is zero")
-		}
+
+		t.Run("no changesets", func(t *testing.T) {
+			campaign := createCampaign(t)
+			closeConfirm(t, campaign, false)
+		})
+
+		t.Run("processing changesets", func(t *testing.T) {
+			campaign := createCampaign(t)
+
+			changeset := testChangeset(rs[0].ID, campaign.ID, campaigns.ChangesetExternalStateOpen)
+			changeset.ReconcilerState = campaigns.ReconcilerStateProcessing
+			if err = store.CreateChangeset(ctx, changeset); err != nil {
+				t.Fatal(err)
+			}
+
+			// should fail
+			_, err := svc.CloseCampaign(ctx, campaign.ID, true)
+			if err != ErrCloseProcessingCampaign {
+				t.Fatalf("CloseCampaign returned unexpected error: %s", err)
+			}
+
+			// without trying to close changesets, it should succeed:
+			closeConfirm(t, campaign, false)
+		})
+
+		t.Run("non-processing changesets", func(t *testing.T) {
+			campaign := createCampaign(t)
+
+			changeset := testChangeset(rs[0].ID, campaign.ID, campaigns.ChangesetExternalStateOpen)
+			changeset.ReconcilerState = campaigns.ReconcilerStateCompleted
+			if err = store.CreateChangeset(ctx, changeset); err != nil {
+				t.Fatal(err)
+			}
+
+			closeConfirm(t, campaign, true)
+		})
 	})
 
 	t.Run("EnqueueChangesetSync", func(t *testing.T) {
